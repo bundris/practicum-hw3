@@ -1,0 +1,6 @@
+target
+.env*
+.sqlx
+.vscode
+.idea
+blog-wasm/pkg
