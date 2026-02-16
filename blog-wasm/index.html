@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blog WASM</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 24px;
+        background: #f5f5f5;
+        color: #222;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .card {
+        background: #fff;
+        padding: 16px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+      label {
+        display: block;
+        font-size: 14px;
+        margin-bottom: 6px;
+      }
+      input,
+      textarea {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 12px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      button {
+        background: #1d6ef2;
+        color: #fff;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #666;
+      }
+      button.danger {
+        background: #d64545;
+      }
+      .status {
+        margin: 12px 0 24px;
+        padding: 10px 12px;
+        background: #fff;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .status-text {
+        font-size: 14px;
+      }
+      .username-label {
+        font-weight: 600;
+      }
+      .posts {
+        display: grid;
+        gap: 12px;
+      }
+      .post {
+        background: #fff;
+        padding: 16px;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+      }
+      .post h3 {
+        margin: 0 0 8px;
+      }
+      .post p {
+        margin: 0 0 12px;
+      }
+      .post small {
+        color: #666;
+      }
+      .post-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .username-label {
+        color: #066;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Blog WASM</h1>
+    <div class="status" id="auth-status">
+      <span class="status-text" id="auth-status-text">Checking authentication...</span>
+      <button class="secondary" id="logout-button" hidden>Log out</button>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Register</h2>
+        <form id="register-form">
+          <label>Username</label>
+          <input type="text" id="register-username" required />
+          <label>Email</label>
+          <input type="email" id="register-email" required />
+          <label>Password</label>
+          <input type="password" id="register-password" required />
+          <button type="submit">Register</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Login</h2>
+        <form id="login-form">
+          <label>Username</label>
+          <input type="text" id="login-username" required />
+          <label>Password</label>
+          <input type="password" id="login-password" required />
+          <button type="submit">Login</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Create Post</h2>
+        <form id="create-form">
+          <label>Title</label>
+          <input type="text" id="create-title" required />
+          <label>Content</label>
+          <textarea id="create-content" rows="4" required></textarea>
+          <button type="submit">Create</button>
+        </form>
+      </div>
+    </div>
+
+    <h2>Posts</h2>
+    <div class="posts" id="posts"></div>
+
+    <script type="module">
+      import init, { BlogApp } from "./pkg/blog_wasm.js";
+
+      const authStatus = document.getElementById("auth-status");
+      const authStatusText = document.getElementById("auth-status-text");
+      const logoutButton = document.getElementById("logout-button");
+      const postsContainer = document.getElementById("posts");
+
+      const registerForm = document.getElementById("register-form");
+      const loginForm = document.getElementById("login-form");
+      const createForm = document.getElementById("create-form");
+
+      const showStatus = (message, isError = false) => {
+        authStatusText.textContent = message;
+        authStatus.style.borderColor = isError ? "#d64545" : "#e0e0e0";
+        authStatus.style.color = isError ? "#d64545" : "#222";
+      };
+
+      const clearPosts = () => {
+        postsContainer.innerHTML = "";
+      };
+
+      const renderPosts = (posts, app) => {
+        clearPosts();
+        if (!posts.length) {
+          postsContainer.textContent = "No posts yet.";
+          return;
+        }
+
+        posts.forEach((post) => {
+          const postId = typeof post.id === "bigint" ? post.id : BigInt(post.id);
+          const wrapper = document.createElement("div");
+          wrapper.className = "post";
+
+          const title = document.createElement("h3");
+          title.textContent = post.title;
+
+          const content = document.createElement("p");
+          content.textContent = post.content;
+
+          const meta = document.createElement("small");
+          meta.textContent = `Post #${post.id} - Author ${post.author_id}`;
+
+          const actions = document.createElement("div");
+          actions.className = "post-actions";
+
+          const editButton = document.createElement("button");
+          editButton.className = "secondary";
+          editButton.textContent = "Edit";
+          editButton.addEventListener("click", async () => {
+            try {
+              const newTitle = prompt("New title", post.title);
+              if (!newTitle) return;
+              const newContent = prompt("New content", post.content);
+              if (!newContent) return;
+              await app.update_post(postId, newTitle, newContent);
+              await loadPosts(app);
+            } catch (error) {
+              showStatus(error.toString(), true);
+            }
+          });
+
+          const deleteButton = document.createElement("button");
+          deleteButton.className = "danger";
+          deleteButton.textContent = "Delete";
+          deleteButton.addEventListener("click", async () => {
+            if (!confirm("Delete this post?")) return;
+            try {
+              await app.delete_post(postId);
+              await loadPosts(app);
+            } catch (error) {
+              showStatus(error.toString(), true);
+            }
+          });
+
+          actions.appendChild(editButton);
+          actions.appendChild(deleteButton);
+
+          wrapper.appendChild(title);
+          wrapper.appendChild(content);
+          wrapper.appendChild(meta);
+          wrapper.appendChild(actions);
+
+          postsContainer.appendChild(wrapper);
+        });
+      };
+
+      const updateAuthStatus = async (app) => {
+        const isAuth = await app.is_authenticated();
+        if (!isAuth) {
+          showStatus("You are a guest user");
+          logoutButton.hidden = true;
+          return;
+        }
+
+        const username = localStorage.getItem("blog_username");
+        const displayName = username ? username : "Unknown";
+        authStatusText.innerHTML = 'You are logged in as <span class="username-label"></span>';
+        authStatusText
+          .querySelector(".username-label")
+          .textContent = displayName;
+        logoutButton.hidden = false;
+      };
+
+      const loadPosts = async (app) => {
+        try {
+          const posts = await app.load_posts();
+          renderPosts(posts, app);
+        } catch (error) {
+          showStatus(error.toString(), true);
+        }
+      };
+
+      const bindForms = (app) => {
+        logoutButton.addEventListener("click", async () => {
+          try {
+            await app.clearToken();
+            localStorage.removeItem("blog_username");
+            await updateAuthStatus(app);
+          } catch (error) {
+            showStatus(error.toString(), true);
+          }
+        });
+
+        registerForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          try {
+            const username = document.getElementById("register-username").value.trim();
+            const email = document.getElementById("register-email").value.trim();
+            const password = document.getElementById("register-password").value.trim();
+            if (!username || !email || !password) {
+              showStatus("Fill all register fields", true);
+              return;
+            }
+            const auth = await app.register(username, email, password);
+            if (auth && auth.user && auth.user.username) {
+              localStorage.setItem("blog_username", auth.user.username);
+            }
+            await updateAuthStatus(app);
+            await loadPosts(app);
+            registerForm.reset();
+          } catch (error) {
+            showStatus(error.toString(), true);
+          }
+        });
+
+        loginForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          try {
+            const username = document.getElementById("login-username").value.trim();
+            const password = document.getElementById("login-password").value.trim();
+            if (!username || !password) {
+              showStatus("Fill all login fields", true);
+              return;
+            }
+            const auth = await app.login(username, password);
+            if (auth && auth.user && auth.user.username) {
+              localStorage.setItem("blog_username", auth.user.username);
+            }
+            await updateAuthStatus(app);
+            await loadPosts(app);
+            loginForm.reset();
+          } catch (error) {
+            showStatus(error.toString(), true);
+          }
+        });
+
+        createForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          try {
+            const title = document.getElementById("create-title").value.trim();
+            const content = document.getElementById("create-content").value.trim();
+            if (!title || !content) {
+              showStatus("Fill all create fields", true);
+              return;
+            }
+            await app.create_post(title, content);
+            await loadPosts(app);
+            createForm.reset();
+          } catch (error) {
+            showStatus(error.toString(), true);
+          }
+        });
+      };
+
+      const start = async () => {
+        await init();
+        const app = new BlogApp();
+        await app.loadToken();
+        await updateAuthStatus(app);
+        bindForms(app);
+        await loadPosts(app);
+      };
+
+      start();
+    </script>
+  </body>
+</html>
