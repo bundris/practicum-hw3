@@ -15,6 +15,10 @@ JWT_SECRET=jasidjasdasjduiasdiasudjasuidjasdiuasndiuasdjasdjas8djad
 HTTP_PORT=3000
 GRPC_PORT=50051
 ```
+Для корректной работы сервера нужно запустить postgres, пример команды:
+```shell
+docker compose up -d
+```
 Для сборки и запуска нужно выполнить
 ```shell
 cargo build
