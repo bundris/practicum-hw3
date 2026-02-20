@@ -1,4 +1,4 @@
-use sqlx::{PgPool, Row};
+use sqlx::{postgres::PgRow, PgPool, Row};
 
 use crate::domain::{DomainError, User};
 
@@ -17,13 +17,15 @@ impl PostgresUserRepository {
         email: &str,
         password_hash: &str,
     ) -> Result<User, DomainError> {
-        let user = sqlx::query_as!(
-            User,
+        let user = sqlx::query(
             "INSERT INTO users (username, email, password_hash)
              VALUES ($1, $2, $3)
              RETURNING id, username, email, password_hash, created_at",
-            username, email, password_hash
         )
+        .bind(username)
+        .bind(email)
+        .bind(password_hash)
+        .try_map(Self::parse_row)
         .fetch_one(&self.pool)
         .await?;
 
@@ -31,25 +33,13 @@ impl PostgresUserRepository {
     }
 
     pub async fn find_by_username(&self, username: &str) -> Result<Option<User>, DomainError> {
-        let user = sqlx::query_as!(User,
+        let user = sqlx::query(
             "SELECT id, username, email, password_hash, created_at
              FROM users
              WHERE username = $1",
-            username
         )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(user)
-    }
-
-    pub async fn find_by_id(&self, id: i64) -> Result<Option<User>, DomainError> {
-        let user = sqlx::query_as!(User,
-            "SELECT id, username, email, password_hash, created_at
-             FROM users
-             WHERE id = $1",
-            id
-        )
+        .bind(username)
+        .try_map(Self::parse_row)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -76,5 +66,14 @@ impl PostgresUserRepository {
         .await?;
 
         Ok(row.get(0))
+    }
+    fn parse_row(row: PgRow) -> Result<User, sqlx::Error> {
+        Ok(User {
+            id: row.try_get("id")?,
+            username: row.try_get("username")?,
+            email: row.try_get("email")?,
+            password_hash: row.try_get("password_hash")?,
+            created_at: row.try_get("created_at")?,
+        })
     }
 }

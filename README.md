@@ -15,6 +15,10 @@ JWT_SECRET=jasidjasdasjduiasdiasudjasuidjasdiuasndiuasdjasdjas8djad
 HTTP_PORT=3000
 GRPC_PORT=50051
 ```
+Для корректной работы сервера нужно запустить postgres, пример команды:
+```shell
+docker compose up -d
+```
 Для сборки и запуска нужно выполнить
 ```shell
 cargo build
@@ -36,6 +40,3 @@ python3 -m http.server 8000
 ### BlogClient
 Некоторые решения были реализованы по описанию задания, это местами приводит к дублированию кода или избыточным абстракциям (выбран путь дублирования).
 Например, держать в BlogClient вместе сущности gprc client, http client и transport (кажется избыточным).
-
-### sqlx
-В коде местами используются макросы sqlx::query_as!, с ними удобнее вести разработку (когда рядом локальная база)
